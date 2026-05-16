@@ -1,0 +1,623 @@
+from __future__ import annotations
+
+import unittest
+from unittest.mock import Mock, patch
+
+from job_fit_engine.engine import (
+    SECTION_KIND_BOILERPLATE,
+    SECTION_KIND_DUTIES,
+    SECTION_KIND_REQUIREMENTS,
+    evaluate_eligibility,
+    evaluate_job_description,
+    parse_description_sections,
+)
+from job_fit_engine.pdf import extract_text_from_pdf
+
+
+class FakeUploadedPdf:
+    def __init__(self, payload: bytes) -> None:
+        self.payload = payload
+
+    def getvalue(self) -> bytes:
+        return self.payload
+
+
+class EngineTests(unittest.TestCase):
+    def test_internal_qa_role_passes_track_a(self) -> None:
+        description = """
+        Junior Data Quality Engineer supporting an internal platform team.
+        You will write SQL and Python validation checks, test APIs, investigate
+        defects, and monitor data pipelines using clear acceptance criteria and
+        documented processes. The role includes structured onboarding, mentorship,
+        feedback, and a predictable hybrid schedule with normal hours. This is a
+        permanent role with career progression and no client-facing work.
+        """
+
+        result = evaluate_job_description(description)
+
+        self.assertEqual(len(result.category_results), 15)
+        self.assertGreaterEqual(result.total_score, 80)
+        self.assertEqual(result.critical_red_flags, [])
+        self.assertEqual(result.verdict, "Apply immediately")
+        self.assertIsNone(result.track_b_status)
+        self.assertIsNone(result.track_b_reason)
+
+    def test_high_score_conditional_role_gets_apply_if_eligibility_can_be_evidenced_clearly(self) -> None:
+        description = """
+        Data Engineering Apprentice
+
+        What you'll do at work:
+        Assist the data engineering team with SQL, Python, pipeline checks, and
+        data quality monitoring for internal systems. Work with colleagues
+        across the business to resolve data issues using documented processes
+        and clear acceptance criteria. Structured onboarding, mentorship, and
+        shadowing are provided.
+
+        Entry requirements:
+        Applicants may qualify through prior technical study, equivalent project
+        experience, or relevant qualifications.
+
+        Training to be provided:
+        The apprenticeship includes stakeholder engagement, communication
+        modules, knowledge, skills and behaviours, and provider-led off-the-job
+        training.
+        """
+
+        result = evaluate_job_description(description)
+
+        self.assertEqual(result.eligibility_status, "Conditional")
+        self.assertGreaterEqual(result.total_score, 80)
+        self.assertEqual(
+            result.verdict, "Apply if eligibility can be evidenced clearly"
+        )
+
+    def test_high_score_role_with_amber_barrier_gets_apply_not_apply_immediately(self) -> None:
+        description = """
+        Data Quality Engineer supporting an internal platform team.
+        You will write SQL and Python validation checks, test APIs, investigate
+        defects, and monitor data pipelines using clear acceptance criteria and
+        documented processes. The role includes structured onboarding,
+        mentorship, feedback, and a predictable hybrid schedule with normal
+        hours. Candidates should bring 3 years of experience. This is a
+        permanent role with career progression and no client-facing work.
+        """
+
+        result = evaluate_job_description(description)
+        barrier_to_entry = next(
+            category
+            for category in result.category_results
+            if category.number == 3
+        )
+
+        self.assertEqual(barrier_to_entry.band, "amber")
+        self.assertGreaterEqual(result.total_score, 80)
+        self.assertEqual(result.verdict, "Apply")
+
+    def test_client_facing_analyst_role_fails_track_a(self) -> None:
+        description = """
+        Senior Business Analyst working directly with external clients. You will
+        manage stakeholders, run workshops, present to executives, own ambiguous
+        requirements, and coordinate rapid responses to urgent escalations in a
+        fast-paced environment. Candidates should hit the ground running with
+        minimal onboarding and bring 5+ years of experience. Travel required.
+        """
+
+        result = evaluate_job_description(description)
+
+        self.assertIn("Stakeholder load", result.critical_red_flags)
+        self.assertIn("Ramp-up realism", result.critical_red_flags)
+        self.assertEqual(result.verdict, "Reject from Track A")
+
+    def test_low_support_can_be_amber_when_role_is_low_stretch(self) -> None:
+        description = """
+        Junior QA role focused on testing, validation, bug triage, and structured
+        checklist-based work for an internal team. Candidates need 1 year of
+        experience and should be comfortable working with minimal supervision.
+        """
+
+        result = evaluate_job_description(description)
+        training_support = next(
+            category
+            for category in result.category_results
+            if category.number == 12
+        )
+
+        self.assertEqual(training_support.band, "amber")
+
+    def test_self_starter_does_not_force_training_support_red(self) -> None:
+        description = """
+        Junior Data Quality Engineer for an internal platform team.
+        You will write SQL validation checks, investigate defects, and monitor
+        data pipelines using documented processes and clear acceptance
+        criteria. Structured onboarding, mentorship, and feedback are
+        provided. We are looking for a proactive self starter.
+        """
+
+        result = evaluate_job_description(description)
+        training_support = next(
+            category
+            for category in result.category_results
+            if category.number == 12
+        )
+
+        self.assertNotEqual(training_support.band, "red")
+        self.assertNotIn("red self starter", training_support.reason.lower())
+
+    def test_competitive_salary_does_not_lower_support_working_environment_fit(self) -> None:
+        description = """
+        Junior Data Quality Engineer supporting an internal platform team.
+        You will write SQL and Python validation checks, test APIs, investigate
+        defects, and monitor data pipelines using clear acceptance criteria and
+        documented processes. The role includes structured onboarding,
+        mentorship, feedback, and a predictable hybrid schedule with normal
+        hours. This is a permanent role with career progression, supportive
+        colleagues, and a competitive salary.
+        """
+
+        result = evaluate_job_description(description)
+        support_working_environment_fit = next(
+            category
+            for category in result.category_results
+            if category.name == "Support and working environment fit"
+        )
+
+        self.assertEqual(support_working_environment_fit.band, "green")
+        self.assertNotIn("competitive", support_working_environment_fit.reason.lower())
+        self.assertEqual(result.verdict, "Apply immediately")
+
+    def test_explicit_or_gateways_are_conditional_not_unclear(self) -> None:
+        description = """
+        Entry requirements: applicants need either prior data experience, a
+        relevant qualification, or apprenticeship-ready evidence of technical
+        study.
+        """
+
+        status, reasons = evaluate_eligibility(description)
+
+        self.assertEqual(status, "Conditional")
+        self.assertTrue(any("conditional" in reason.lower() for reason in reasons))
+
+    def test_filtered_domain_requirements_stay_unclear_not_conditional(self) -> None:
+        description = """
+        Requirements:
+        Degree in policy, finance, business, or a similar field, plus prior data
+        analysis experience and experience in policy administration or financial
+        services environments.
+        """
+
+        status, _ = evaluate_eligibility(description)
+
+        self.assertEqual(status, "Unclear")
+
+    def test_senior_stakeholders_phrase_does_not_force_barrier_red(self) -> None:
+        description = """
+        Junior Data Analyst for an internal reporting team.
+        You will prepare dashboards, investigate data issues, and present
+        monthly updates to senior stakeholders. Structured onboarding and
+        mentorship are provided.
+        """
+
+        result = evaluate_job_description(description)
+        barrier_to_entry = next(
+            category
+            for category in result.category_results
+            if category.number == 3
+        )
+
+        self.assertNotEqual(barrier_to_entry.band, "red")
+        self.assertNotIn("senior", barrier_to_entry.reason.lower())
+
+    def test_lead_generation_team_blurb_does_not_force_seniority_penalty(self) -> None:
+        description = """
+        Data Operations Analyst
+
+        About the team:
+        The commercial team supports lead generation and marketing campaigns
+        across the business.
+
+        Responsibilities:
+        Reconcile records, respond to queries, maintain process documentation,
+        and support internal reporting for operations.
+        """
+
+        result = evaluate_job_description(description)
+        barrier_to_entry = next(
+            category
+            for category in result.category_results
+            if category.number == 3
+        )
+
+        self.assertNotEqual(barrier_to_entry.band, "red")
+        self.assertNotIn("lead", barrier_to_entry.reason.lower())
+
+    def test_student_only_language_is_ineligible_for_2022_graduate(self) -> None:
+        description = """
+        Graduate Software Analyst programme for current students and final year
+        students only. Applicants must be graduating in 2026.
+        """
+
+        status, reasons = evaluate_eligibility(description)
+
+        self.assertEqual(status, "Ineligible")
+        self.assertTrue(any("2022 graduate" in reason for reason in reasons))
+
+    def test_graduate_scheme_language_is_possibly_ineligible(self) -> None:
+        description = """
+        Entry-level graduate role in our software graduate scheme. Recent
+        graduates are encouraged to apply.
+        """
+
+        status, reasons = evaluate_eligibility(description)
+
+        self.assertEqual(status, "Possibly ineligible")
+        self.assertTrue(any("more recent than 2022" in reason for reason in reasons))
+
+    def test_uk_right_to_work_language_is_eligible(self) -> None:
+        description = """
+        Applicants must already have the right to work in the UK and be able to
+        work in the UK without sponsorship.
+        """
+
+        status, reasons = evaluate_eligibility(description)
+
+        self.assertEqual(status, "Eligible")
+        self.assertTrue(any("right-to-work" in reason.lower() for reason in reasons))
+
+    def test_sponsorship_available_is_neutral(self) -> None:
+        description = "Visa sponsorship available for successful candidates."
+
+        status, reasons = evaluate_eligibility(description)
+
+        self.assertEqual(status, "Unclear")
+        self.assertEqual(len(reasons), 1)
+
+    def test_track_a_scoring_still_runs_for_ineligible_roles(self) -> None:
+        description = """
+        Junior Data Quality Engineer for current students and final year students.
+        You will write SQL and Python validation checks, test APIs, investigate
+        defects, and monitor data pipelines using clear acceptance criteria and
+        documented processes. The role includes structured onboarding,
+        mentorship, feedback, and a predictable hybrid schedule with normal
+        hours. This is a permanent role with career progression and no
+        client-facing work.
+        """
+
+        result = evaluate_job_description(description)
+
+        self.assertEqual(result.eligibility_status, "Ineligible")
+        self.assertTrue(any("2022 graduate" in reason for reason in result.eligibility_reasons))
+        self.assertEqual(len(result.category_results), 15)
+        self.assertGreater(result.total_score, 0)
+
+    def test_high_risk_stretch_when_technical_and_social_stretch_stack(self) -> None:
+        description = """
+        Reporting and process analyst role. You will own documentation, reporting,
+        and process work, manage stakeholders, run workshops, and handle changing
+        priorities with minimal supervision. Candidates should bring 3 years of
+        experience.
+        """
+
+        result = evaluate_job_description(description)
+
+        self.assertEqual(result.stretch_risk, "High-risk stretch")
+        self.assertIn("Both technical scope categories are stretched", result.stretch_reason)
+
+    def test_supported_stretch_when_structure_or_support_buffers_it(self) -> None:
+        description = """
+        Reporting and process analyst role for an internal team. You will support
+        documentation and reporting work in a structured, routine environment with
+        established process, training, mentorship, and feedback. Candidates
+        should bring 3 years of experience.
+        """
+
+        result = evaluate_job_description(description)
+
+        self.assertEqual(result.stretch_risk, "Supported stretch")
+        self.assertIn("buffered", result.stretch_reason)
+
+    def test_moderate_stretch_when_only_some_technical_stretch_is_present(self) -> None:
+        description = """
+        Junior reporting analyst role. You will handle documentation and reporting
+        tasks, collaborate across teams, and adapt to changing priorities.
+        Candidates should bring 1 year of experience.
+        """
+
+        result = evaluate_job_description(description)
+
+        self.assertEqual(result.stretch_risk, "Moderate stretch")
+        self.assertIn("some technical stretch", result.stretch_reason)
+
+    def test_track_a_reject_can_be_strong_buffer(self) -> None:
+        description = """
+        Internal reporting coordinator role handling routine documentation and
+        support tasks. Structured onboarding, hybrid working, and permanent
+        contract.
+        """
+
+        result = evaluate_job_description(description)
+
+        self.assertTrue(result.verdict.startswith("Reject from Track A"))
+        self.assertEqual(result.track_b_status, "Strong Buffer")
+        self.assertIn("viable as a short-term fallback", result.track_b_reason)
+
+    def test_track_a_reject_can_be_weak_buffer(self) -> None:
+        description = """
+        Internal reporting coordinator role handling routine documentation and
+        support tasks. Routine work, but travel required and temporary contract.
+        """
+
+        result = evaluate_job_description(description)
+
+        self.assertTrue(result.verdict.startswith("Reject from Track A"))
+        self.assertEqual(result.track_b_status, "Weak Buffer")
+        self.assertIn("mixed", result.track_b_reason)
+
+    def test_track_a_reject_can_be_not_suitable_for_track_b(self) -> None:
+        description = """
+        Internal reporting coordinator role with routine documentation work, but
+        candidates must manage stakeholders and urgent escalations in a
+        fast-paced environment. Hybrid working and permanent contract.
+        """
+
+        result = evaluate_job_description(description)
+
+        self.assertTrue(result.verdict.startswith("Reject from Track A"))
+        self.assertEqual(result.track_b_status, "Not suitable for Track B")
+        self.assertIn("red safety signals", result.track_b_reason)
+
+    def test_chambers_style_apprenticeship_role_is_not_over_penalised(self) -> None:
+        description = """
+        Junior Data Engineer Apprentice
+
+        What you'll do at work:
+        Build and maintain data pipelines, support ETL processes, write SQL and
+        Python, monitor data quality, fix data issues, and work with the data
+        engineering team on internal systems. You will collaborate with
+        colleagues across the business and influence stakeholders to improve
+        data quality. Training, mentorship, onboarding and day-release study
+        are provided throughout the apprenticeship.
+
+        Entry requirements:
+        Applicants need either A-levels, a relevant qualification, or
+        equivalent prior experience in data or software. This apprenticeship
+        includes off-the-job training and modules covering communication,
+        stakeholder engagement, apprenticeship standards, and behaviours.
+        """
+
+        result = evaluate_job_description(description)
+        stakeholder_load = next(
+            category
+            for category in result.category_results
+            if category.number == 5
+        )
+
+        self.assertEqual(result.eligibility_status, "Conditional")
+        self.assertEqual(result.stretch_risk, "Supported stretch")
+        self.assertEqual(stakeholder_load.band, "amber")
+        self.assertEqual(result.verdict, "Apply")
+        self.assertNotIn("Stakeholder load", result.critical_red_flags)
+        self.assertGreaterEqual(result.total_score, 75)
+
+    def test_junior_technical_role_keeps_green_core_and_technical_fit(self) -> None:
+        description = """
+        Junior Data Engineer Apprentice
+
+        What you'll do at work:
+        Build and maintain data pipelines, support ETL processes, write SQL and
+        Python, monitor data quality, fix data issues, and work with the data
+        engineering team on internal systems. Training, mentorship, onboarding
+        support, and day-release study are provided.
+
+        Entry requirements:
+        Applicants need either A-levels, a relevant qualification, or
+        equivalent prior experience in data or software.
+        """
+
+        result = evaluate_job_description(description)
+        core_alignment = next(
+            category
+            for category in result.category_results
+            if category.number == 1
+        )
+        technical_fit = next(
+            category
+            for category in result.category_results
+            if category.number == 2
+        )
+
+        self.assertEqual(core_alignment.band, "green")
+        self.assertEqual(technical_fit.band, "green")
+
+    def test_genuinely_stakeholder_heavy_role_still_scores_red(self) -> None:
+        description = """
+        Business Analyst
+        You will manage stakeholder relationships, run workshops, gather
+        requirements from multiple business teams, and present
+        recommendations to executives.
+        """
+
+        result = evaluate_job_description(description)
+        stakeholder_load = next(
+            category
+            for category in result.category_results
+            if category.number == 5
+        )
+
+        self.assertEqual(stakeholder_load.band, "red")
+        self.assertIn("Stakeholder load", result.critical_red_flags)
+
+    def test_true_lead_role_still_scores_barrier_red(self) -> None:
+        description = """
+        Lead Data Engineer
+        You will own architecture decisions, mentor engineers, and bring 6+
+        years of experience.
+        """
+
+        result = evaluate_job_description(description)
+        barrier_to_entry = next(
+            category
+            for category in result.category_results
+            if category.number == 3
+        )
+
+        self.assertEqual(barrier_to_entry.band, "red")
+
+    def test_junior_labelled_business_partner_role_is_still_rejected(self) -> None:
+        description = """
+        Junior Data and Insights Analyst
+
+        Responsibilities:
+        Partner with multiple business teams, gather requirements, run workshops,
+        present recommendations to senior stakeholders, and manage stakeholder
+        relationships across the organisation. Produce dashboards and reporting
+        packs for decision-making.
+
+        Training provided:
+        You will receive onboarding support.
+        """
+
+        result = evaluate_job_description(description)
+        stakeholder_load = next(
+            category
+            for category in result.category_results
+            if category.number == 5
+        )
+
+        self.assertEqual(stakeholder_load.band, "red")
+        self.assertIn("Stakeholder load", result.critical_red_flags)
+        self.assertTrue(result.verdict.startswith("Reject from Track A"))
+
+    def test_domain_heavy_analyst_role_with_sql_and_systems_is_not_treated_as_strong_technical_fit(self) -> None:
+        description = """
+        Policy Data Management Analyst
+
+        Role summary:
+        Support policy data management operations across internal systems. You
+        will use SQL, Excel, and reporting tools to investigate mismatches,
+        reconcile records, respond to queries, coordinate with third parties,
+        chase outstanding issues, maintain procedure guides, support onboarding
+        of policies into the administration system, and produce data analysis
+        for operational teams. You will work with internal stakeholders across
+        policy, operations, and change teams to resolve incidents and improve
+        data quality.
+
+        Requirements:
+        Experience in data analysis, reconciliation, process improvement, and
+        corporate or financial services environments. Knowledge of policy
+        administration systems is useful.
+        """
+
+        result = evaluate_job_description(description)
+        core_alignment = next(
+            category
+            for category in result.category_results
+            if category.number == 1
+        )
+        technical_fit = next(
+            category
+            for category in result.category_results
+            if category.number == 2
+        )
+        stakeholder_load = next(
+            category
+            for category in result.category_results
+            if category.number == 5
+        )
+        training_support = next(
+            category
+            for category in result.category_results
+            if category.number == 12
+        )
+
+        self.assertEqual(core_alignment.band, "amber")
+        self.assertEqual(technical_fit.band, "amber")
+        self.assertEqual(stakeholder_load.band, "amber")
+        self.assertNotEqual(training_support.band, "green")
+        self.assertLess(result.total_score, 80)
+        self.assertNotEqual(result.verdict, "Apply immediately")
+
+    def test_business_object_onboarding_does_not_count_as_training_support(self) -> None:
+        description = """
+        Operations Data Coordinator
+
+        Responsibilities:
+        Support onboarding of policies and client records into the
+        administration system, reconcile records, respond to queries, follow up
+        issues with third parties, and maintain procedure guides for the team.
+        """
+
+        result = evaluate_job_description(description)
+        training_support = next(
+            category
+            for category in result.category_results
+            if category.number == 12
+        )
+
+        self.assertNotEqual(training_support.band, "green")
+
+    def test_training_boilerplate_mixed_with_duties_does_not_force_stakeholder_red(self) -> None:
+        description = """
+        What you'll do at work:
+        Assist the data engineering team with SQL, Python, pipeline checks, and
+        data quality monitoring for internal systems. Collaborate with teams
+        across the business to resolve data issues.
+
+        Training to be provided:
+        Apprentices will study communication, stakeholder engagement, knowledge,
+        skills and behaviours, and complete off-the-job training with the
+        provider.
+        """
+
+        result = evaluate_job_description(description)
+        stakeholder_load = next(
+            category
+            for category in result.category_results
+            if category.number == 5
+        )
+
+        self.assertEqual(stakeholder_load.band, "amber")
+        self.assertNotIn("Stakeholder load", result.critical_red_flags)
+        self.assertIn(result.verdict, {"Apply", "Reject from Track A (low confidence: limited input)"})
+
+    def test_section_parser_classifies_priority_and_boilerplate_sections(self) -> None:
+        description = """
+        What you'll do at work:
+        Build data pipelines.
+
+        Entry requirements:
+        Applicants need either prior experience or a qualification.
+
+        Training to be provided:
+        Communication modules and apprenticeship standard content.
+        """
+
+        sections = parse_description_sections(description)
+
+        self.assertEqual(sections[0].kind, SECTION_KIND_DUTIES)
+        self.assertEqual(sections[1].kind, SECTION_KIND_REQUIREMENTS)
+        self.assertEqual(sections[2].kind, SECTION_KIND_BOILERPLATE)
+
+
+class PdfExtractionTests(unittest.TestCase):
+    @patch("job_fit_engine.pdf.PdfReader")
+    def test_extract_text_from_pdf_joins_text_from_all_pages(self, mock_pdf_reader) -> None:
+        first_page = Mock()
+        first_page.extract_text.return_value = "First page"
+        second_page = Mock()
+        second_page.extract_text.return_value = "Second page"
+        third_page = Mock()
+        third_page.extract_text.return_value = None
+        mock_pdf_reader.return_value.pages = [first_page, second_page, third_page]
+
+        extracted_text = extract_text_from_pdf(FakeUploadedPdf(b"%PDF-test"))
+
+        self.assertEqual(extracted_text, "First page\nSecond page")
+
+    def test_extract_text_from_pdf_raises_clear_error_when_pypdf_is_missing(self) -> None:
+        with patch("job_fit_engine.pdf.PdfReader", None):
+            with self.assertRaisesRegex(RuntimeError, "pypdf"):
+                extract_text_from_pdf(FakeUploadedPdf(b"%PDF-test"))
+
+
+if __name__ == "__main__":
+    unittest.main()
