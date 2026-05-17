@@ -246,3 +246,4 @@ This project is designed around a few principles:
 - add richer fixtures for real-world job-description formats
 - separate rubric configuration from engine code
 - add a screenshot or short demo of the Streamlit interface
+- improve section-aware parsing for responsibilities, requirements, and benefits
