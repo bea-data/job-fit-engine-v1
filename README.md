@@ -118,6 +118,34 @@ At a high level, the workflow is:
 
 The core engine lives in [job_fit_engine/engine.py](job_fit_engine/engine.py), with lightweight data models and separate CLI/UI entry points layered on top.
 
+## Sample Input and Output
+
+Sample input:
+
+```text
+Junior Data Quality Analyst role supporting internal data validation, structured workflows, Excel-based checks, SQL queries, and migration support. Includes clear onboarding, documented processes, and structured internal workflow support.
+```
+
+Example output:
+
+```text
+Track A Score: 82/100
+Verdict: Apply immediately
+Stretch Risk: Supported stretch
+Critical Red Flags: None
+
+Strong signals:
+- Internal-facing data quality work
+- Structured workflows
+- Clear onboarding
+- SQL/Excel validation tasks
+- Strong fit with repeatable QA processes
+
+Watch points:
+- Confirm how much technical support is provided.
+- Confirm whether migration work is hands-on or mostly administrative.
+```
+
 ## Project Structure
 
 - [job_fit_engine/engine.py](job_fit_engine/engine.py): core rule engine and scoring logic
@@ -205,6 +233,20 @@ This project is a good example of:
 - writing tests around edge cases and decision consistency
 
 It is less about "predicting the perfect job" and more about building a transparent decision-support system.
+
+## What I Learned
+
+This project helped me practise turning an ambiguous real-world decision process into explicit rules, categories, and testable outputs.
+
+Key learning points included:
+
+- defining scoring categories clearly enough to be implemented in code
+- translating qualitative judgement into repeatable decision logic
+- reviewing false positives and false negatives in rule-based outputs
+- improving keyword and phrase matching so isolated words did not over-influence the final score
+- using tests to check that strong-fit, stretch, and reject examples behaved as expected
+- separating explainable scoring from black-box prediction
+- documenting limitations honestly so the tool is useful without being overstated
 
 ## Testing
 
