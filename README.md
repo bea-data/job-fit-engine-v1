@@ -138,7 +138,7 @@ python -m pip install -e .
 If you want to use the Streamlit interface as well:
 
 ```powershell
-python -m pip install streamlit
+python -m pip install -e ".[ui]"
 ```
 
 ### 2. Run the CLI
