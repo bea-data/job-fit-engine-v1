@@ -236,7 +236,8 @@ This project is designed around a few principles:
 - The rules are heuristic and intentionally opinionated.
 - The engine is tuned to one candidate profile rather than all job seekers.
 - It works best with complete job descriptions, not short summaries.
-- Streamlit is used by the app but is not currently listed as a package dependency in `pyproject.toml`.
+- It does not use machine learning or semantic parsing, so subtle context can still be missed.
+- The scoring model depends on the quality of the rubric and phrase patterns.
 
 ## Future Improvements
 
@@ -244,4 +245,4 @@ This project is designed around a few principles:
 - export results as JSON or CSV
 - add richer fixtures for real-world job-description formats
 - separate rubric configuration from engine code
-- package optional UI dependencies more cleanly
+- add a screenshot or short demo of the Streamlit interface
