@@ -81,7 +81,7 @@ The current implementation evaluates:
 - ambiguity level
 - structure and predictability
 - ramp-up realism
-- internal vs client-facing exposure
+- internal systems vs external stakeholder context
 - pressure and operational load
 - work mode stability
 - training and support
@@ -174,7 +174,7 @@ python -m pip install -e ".[ui]"
 Evaluate inline text:
 
 ```powershell
-job-fit-engine --text "Junior internal data quality role with structured workflows, training, and no client-facing work."
+job-fit-engine --text "Junior internal data quality role with structured workflows, training, and repeatable validation processes."
 ```
 
 Evaluate a saved file:
