@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock, patch
 
+from job_fit_engine.cli import format_report
 from job_fit_engine.engine import (
     SECTION_KIND_BOILERPLATE,
     SECTION_KIND_DUTIES,
@@ -270,6 +271,13 @@ class EngineTests(unittest.TestCase):
 
         self.assertEqual(status, "Unclear")
         self.assertEqual(len(reasons), 1)
+        self.assertTrue(
+            any(
+                "configured example candidate profile" in reason
+                for reason in reasons
+            )
+        )
+        self.assertFalse(any("2022 UK citizen" in reason for reason in reasons))
 
     def test_track_a_scoring_still_runs_for_ineligible_roles(self) -> None:
         description = """
@@ -578,6 +586,24 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(stakeholder_load.band, "amber")
         self.assertNotIn("Stakeholder load", result.critical_red_flags)
         self.assertIn(result.verdict, {"Apply", "Reject from Track A (low confidence: limited input)"})
+
+    def test_cli_report_uses_updated_internal_context_display_label(self) -> None:
+        description = """
+        Junior Data Quality Engineer supporting an internal platform team.
+        You will write SQL validation checks, investigate defects, and monitor
+        data pipelines using documented processes and clear acceptance
+        criteria. Structured onboarding, mentorship, and feedback are
+        provided.
+        """
+
+        result = evaluate_job_description(description)
+        report = format_report(result)
+
+        self.assertIn(
+            "Internal systems vs external stakeholder context",
+            report,
+        )
+        self.assertNotIn("Internal vs client-facing", report)
 
     def test_section_parser_classifies_priority_and_boilerplate_sections(self) -> None:
         description = """

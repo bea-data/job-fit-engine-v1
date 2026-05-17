@@ -7,6 +7,10 @@ from pathlib import Path
 from .engine import evaluate_job_description
 from .models import EvaluationResult
 
+DISPLAY_LABELS = {
+    "Internal vs client-facing": "Internal systems vs external stakeholder context",
+}
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
@@ -65,7 +69,7 @@ def format_report(result: EvaluationResult) -> str:
 
     lines.extend(["", "Track A Scorecard", ""])
     for category in result.category_results:
-        label = f"{category.number:02d}. {category.name}"
+        label = f"{category.number:02d}. {display_label(category.name)}"
         score = f"{format_score(category.score)}/{category.weight}"
         lines.append(
             f"{label:<40} {category.band.upper():<5} {score:>8}  {category.reason}"
@@ -74,11 +78,16 @@ def format_report(result: EvaluationResult) -> str:
     lines.append("")
     lines.append(f"Total score: {format_score(result.total_score)}/100")
     if result.critical_red_flags:
-        lines.append("Critical red flags: " + ", ".join(result.critical_red_flags))
+        red_flags = ", ".join(display_label(flag) for flag in result.critical_red_flags)
+        lines.append("Critical red flags: " + red_flags)
     else:
         lines.append("Critical red flags: none")
     lines.append(f"Track A verdict: {result.verdict}")
     return "\n".join(lines)
+
+
+def display_label(value: str) -> str:
+    return DISPLAY_LABELS.get(value, value)
 
 
 def format_score(value: float) -> str:

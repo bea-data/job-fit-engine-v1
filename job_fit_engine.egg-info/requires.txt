@@ -1,0 +1,4 @@
+pypdf>=5.0.0
+
+[ui]
+streamlit>=1.30.0

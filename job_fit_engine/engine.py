@@ -614,7 +614,7 @@ def _evaluate_eligibility(cleaned_description: str) -> tuple[str, list[str]]:
     return (
         "Unclear",
         [
-            "The description does not state an eligibility rule that clearly helps or excludes a 2022 UK citizen who does not need sponsorship."
+            "The description does not state an eligibility rule that clearly helps or excludes the configured example candidate profile."
         ],
     )
 

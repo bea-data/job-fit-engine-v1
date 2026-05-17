@@ -1,0 +1,2 @@
+[console_scripts]
+job-fit-engine = job_fit_engine.cli:main
