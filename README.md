@@ -16,6 +16,15 @@ The project includes:
 - a Streamlit app for interactive review
 - unit tests for representative good-fit, borderline, and reject scenarios
 
+## Demo
+
+<img width="655" height="628" alt="image" src="https://github.com/user-attachments/assets/7514b72d-2c29-4e9e-98c3-ff988b3ec058" />
+<img width="646" height="842" alt="image" src="https://github.com/user-attachments/assets/3fd0d363-1cb6-44da-be47-82fc52e31579" />
+<img width="632" height="851" alt="image" src="https://github.com/user-attachments/assets/bbbab7fa-5b44-4529-8e79-a10f05e29ee3" />
+<img width="627" height="511" alt="image" src="https://github.com/user-attachments/assets/2c80f68e-2554-4925-a95a-a6bc91ab933f" />
+
+[Try the Streamlit app](https://job-fit-engine-v1-iedx532y2tvwdbuo59edcf.streamlit.app/)
+
 ## Why I Built It
 
 Job-search decisions are often subjective, inconsistent, and hard to explain after the fact. I designed this project to make that process more structured and repeatable.
@@ -277,7 +286,7 @@ This project is designed around a few principles:
 
 - The rules are heuristic and intentionally opinionated.
 - The engine is tuned to a specific career-fit profile rather than general-purpose job matching.
-- It works best with complete job descriptions, not short, rule-based explanations.
+- It works best with complete job descriptions, not short summaries.
 - It does not currently use machine learning or semantic parsing, so subtle context can still be missed.
 - The scoring model depends on the quality of the rubric and phrase patterns.
 
