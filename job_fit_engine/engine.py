@@ -109,6 +109,11 @@ BOILERPLATE_HEADINGS = [
 
 CANDIDATE_GRADUATION_YEAR = 2022
 
+CANDIDATE_PROFILE_DESCRIPTION = (
+    f"{CANDIDATE_GRADUATION_YEAR} graduate with the right to work in the UK "
+    "who does not require sponsorship"
+)
+
 STUDENT_ONLY_PHRASES = [
     "current students",
     "current student",
@@ -591,7 +596,7 @@ def _evaluate_eligibility(cleaned_description: str) -> tuple[str, list[str]]:
     uk_right_to_work_matches = find_matches(normalized_text, UK_RIGHT_TO_WORK_PHRASES)
     if uk_right_to_work_matches:
         eligible_reasons.append(
-            "The UK right-to-work requirement is compatible with a UK citizen who does not need sponsorship."
+            "The UK right-to-work requirement is compatible with a candidate who does not need sponsorship."
         )
 
     conditional_gateway_matches = find_conditional_eligibility_matches(
@@ -614,7 +619,7 @@ def _evaluate_eligibility(cleaned_description: str) -> tuple[str, list[str]]:
     return (
         "Unclear",
         [
-            "The description does not state an eligibility rule that clearly helps or excludes the configured example candidate profile."
+            f"The description does not state an eligibility rule that clearly helps or excludes a {CANDIDATE_PROFILE_DESCRIPTION}."
         ],
     )
 
