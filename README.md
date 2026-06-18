@@ -18,12 +18,11 @@ The project includes:
 
 ## Demo
 
+[Try the Streamlit app](https://job-fit-engine-v1-iedx532y2tvwdbuo59edcf.streamlit.app/)
 <img width="655" height="628" alt="image" src="https://github.com/user-attachments/assets/7514b72d-2c29-4e9e-98c3-ff988b3ec058" />
 <img width="646" height="842" alt="image" src="https://github.com/user-attachments/assets/3fd0d363-1cb6-44da-be47-82fc52e31579" />
 <img width="632" height="851" alt="image" src="https://github.com/user-attachments/assets/bbbab7fa-5b44-4529-8e79-a10f05e29ee3" />
 <img width="627" height="511" alt="image" src="https://github.com/user-attachments/assets/2c80f68e-2554-4925-a95a-a6bc91ab933f" />
-
-[Try the Streamlit app](https://job-fit-engine-v1-iedx532y2tvwdbuo59edcf.streamlit.app/)
 
 ## Why I Built It
 
